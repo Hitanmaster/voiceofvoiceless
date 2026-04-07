@@ -13,6 +13,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 import mediapipe as mp
 
+# Import motion signs module
+import motion_signs
+
 warnings.filterwarnings("ignore")
 
 DATASET_FILE = 'hand_landmarks.csv'
@@ -46,7 +49,7 @@ def play_audio(filename):
         os.system(f"xdg-open {filename}")
 
 # =========================================================================
-# CORE FUNCTIONS (LOCAL)
+# CORE FUNCTIONS (STATIC SIGNS - LOCAL)
 # =========================================================================
 def record_data():
     """Webcam on karke frames process karta hai aur CSV mein save karta hai."""
@@ -205,18 +208,34 @@ def delete_dataset():
     else:
         print("\n[INFO] Koi dataset file maujud nahi hai. Aap fresh start kar sakte hain.")
 
+# =========================================================================
+# MAIN MENU
+# =========================================================================
 def main():
     while True:
-        print("\n" + "="*40)
-        print("  SIGN LANGUAGE TO VOICE (LOCAL EDITION)  ")
-        print("="*40)
-        print("1. Record New Sign (5 Seconds)")
-        print("2. Train AI Model")
-        print("3. Predict Sign & Play Voice (3 Seconds)")
-        print("4. Exit")
-        print("5. Reset/Delete Dataset (Start Fresh)")
+        print("\n" + "="*55)
+        print("   SIGN LANGUAGE TO VOICE - AI RECOGNITION SYSTEM")
+        print("="*55)
+        
+        print("\n  ─── Static Signs (Letters/Poses) ───")
+        print("  1. Record New Static Sign (5 Seconds)")
+        print("  2. Train Static AI Model")
+        print("  3. Predict Static Sign & Play Voice")
+        
+        print("\n  ─── Motion Signs (Hello, Goodbye, etc.) ───")
+        print("  4. Record New Motion Sign (10 Seconds)")
+        print("  5. Predict Motion Sign & Play Voice")
+        print("  6. Quick Record (Pick from list)")
+        
+        print("\n  ─── Utilities ───")
+        print("  7. View All Recorded Signs")
+        print("  8. Reset/Delete Static Dataset")
+        print("  9. Reset/Delete Motion Signs Data")
+        print("  0. Exit")
+        
+        print("="*55)
 
-        choice = input("Enter choice (1/2/3/4/5): ")
+        choice = input("\nEnter choice (0-9): ").strip()
 
         if choice == '1':
             record_data()
@@ -225,12 +244,40 @@ def main():
         elif choice == '3':
             live_prediction()
         elif choice == '4':
+            motion_signs.record_motion_sign()
+        elif choice == '5':
+            motion_signs.predict_motion_sign()
+        elif choice == '6':
+            motion_signs.batch_record_signs()
+        elif choice == '7':
+            # Show both static and motion signs
+            print("\n" + "─"*55)
+            print("  STATIC SIGNS:")
+            print("─"*55)
+            if os.path.exists(DATASET_FILE) and os.path.getsize(DATASET_FILE) > 0:
+                try:
+                    df = pd.read_csv(DATASET_FILE)
+                    if 'label' in df.columns:
+                        for label, count in df['label'].value_counts().items():
+                            print(f"    {label:20s} | {count} frames")
+                    else:
+                        print("    Dataset corrupt hai.")
+                except Exception:
+                    print("    Dataset read nahi ho saka.")
+            else:
+                print("    Koi static sign record nahi hua.")
+            
+            motion_signs.list_recorded_signs()
+            
+        elif choice == '8':
+            delete_dataset()
+        elif choice == '9':
+            motion_signs.delete_motion_data()
+        elif choice == '0':
             print("\nProgram band ho raha hai. Goodbye!")
             break
-        elif choice == '5':
-            delete_dataset()
         else:
-            print("\nGalat option! Kripya 1 se 5 ke beech chunein.")
+            print("\nGalat option! Kripya 0 se 9 ke beech chunein.")
 
 if __name__ == "__main__":
     main()
