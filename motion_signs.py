@@ -1,9 +1,4 @@
 """
-Motion Sign Recognition Module
-================================
-Recognizes dynamic/motion signs (Hello, Goodbye, Please, Thank You, Yes, No, etc.)
-by recording hand landmark sequences over time and comparing using DTW.
-
 Works on CPU only - no GPU needed!
 """
 

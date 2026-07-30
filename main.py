@@ -12,8 +12,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 import mediapipe as mp
-
-# Import motion signs module
 import motion_signs
 
 warnings.filterwarnings("ignore")
@@ -32,7 +30,6 @@ hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_c
 # HELPER FUNCTIONS
 # =========================================================================
 def setup_csv():
-    """CSV file banata hai aur 63 coordinates ke headers set karta hai."""
     if not os.path.exists(DATASET_FILE) or os.path.getsize(DATASET_FILE) == 0:
         with open(DATASET_FILE, mode='w', newline='') as f:
             writer = csv.writer(f)
@@ -40,7 +37,6 @@ def setup_csv():
             writer.writerow(headers)
 
 def play_audio(filename):
-    """OS ke hisaab se audio play karta hai bina extra library ke."""
     if platform.system() == "Windows":
         os.system(f"start {filename}")
     elif platform.system() == "Darwin": # macOS
@@ -52,7 +48,6 @@ def play_audio(filename):
 # CORE FUNCTIONS (STATIC SIGNS - LOCAL)
 # =========================================================================
 def record_data():
-    """Webcam on karke frames process karta hai aur CSV mein save karta hai."""
     sign_name = input("\nKaunsa sign record karna hai? (e.g., Hello): ")
     setup_csv()
     
@@ -105,7 +100,6 @@ def record_data():
     print(f"[SUCCESS] '{sign_name}' ke {count} frames successfully dataset mein add ho gaye!\n")
 
 def train_model():
-    """CSV data padh kar ML Model train karta hai."""
     if not os.path.exists(DATASET_FILE) or os.path.getsize(DATASET_FILE) == 0:
         print("\n[ERROR] Dataset nahi mila ya khali hai! Pehle kuch signs record karein (Option 1).")
         return
@@ -145,7 +139,6 @@ def train_model():
         pickle.dump(model, f)
 
 def live_prediction():
-    """Local camera khol kar 3 seconds observe karta hai aur predict karta hai."""
     if not os.path.exists(MODEL_FILE):
         print("\n[ERROR] Trained model nahi mila! Pehle model train karein (Option 2).")
         return
@@ -201,7 +194,6 @@ def live_prediction():
         print("\n[WARNING] Camera mein koi haath detect nahi hua. Kripya dobara koshish karein.")
 
 def delete_dataset():
-    """Manual override to delete the dataset."""
     if os.path.exists(DATASET_FILE):
         os.remove(DATASET_FILE)
         print(f"\n[SUCCESS] Purana dataset '{DATASET_FILE}' delete ho gaya hai!")
