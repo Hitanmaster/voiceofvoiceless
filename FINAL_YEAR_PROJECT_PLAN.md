@@ -1,7 +1,7 @@
 # Final Year Project Plan: Unified Real-Time Sign Language AI System
 
 ## 🎓 Executive Summary
-This document presents the complete architectural plan and engineering roadmap to upgrade the **Sign Language AI System** into an industry-grade, publication-ready **Final Year Project**. 
+This document presents the complete architectural plan and engineering roadmap to upgrade the **Sign Language AI System** into an industry-grade. 
 
 By leveraging **Google Colab Free GPU** compute power, we replace the legacy two-part system (separate static Random Forest and dynamic DTW modules) with a **Single Unified Deep Learning Sequence Pipeline**. This unified model automatically recognizes both static signs (letters/poses) and dynamic motion signs (gestures) continuously in real-time without manual user menu switching.
 
