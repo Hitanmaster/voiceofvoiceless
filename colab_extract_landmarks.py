@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # ── CELL 1: Install Dependencies ──────────────────────────────────────────────
-# In Colab, uncomment and run:
+# In Colab, simply run:
 # !pip install -q mediapipe opencv-python-headless numpy tqdm matplotlib
 
 # ── CELL 2: Mount Google Drive ────────────────────────────────────────────────
@@ -60,8 +60,42 @@ if EXTRACTION_MODE == "TOP_35":
 
 
 # ── CELL 4: MediaPipe Holistic Feature Extraction Function ────────────────────
+# Supports both modern MediaPipe Tasks API (v0.10.30+) and legacy Solutions API.
 
-mp_holistic = mp.solutions.holistic
+def init_holistic_detector(model_path="holistic_landmarker.task"):
+    """Initializes MediaPipe Holistic using either Tasks API (0.10.30+) or legacy Solutions API."""
+    import mediapipe as mp
+    
+    # 1. Try legacy Solutions API first
+    if hasattr(mp, "solutions") and hasattr(mp.solutions, "holistic"):
+        print("[*] Initializing legacy MediaPipe Solutions API...")
+        detector = mp.solutions.holistic.Holistic(
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+            model_complexity=1
+        )
+        return detector, False
+    
+    # 2. Modern MediaPipe Tasks API (0.10.30+)
+    print("[*] Initializing modern MediaPipe Tasks API...")
+    import urllib.request
+    if not os.path.exists(model_path):
+        print(f"[*] Downloading holistic_landmarker.task model file...")
+        url = "https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task"
+        urllib.request.urlretrieve(url, model_path)
+        print("[OK] Model file downloaded successfully.")
+
+    from mediapipe.tasks import python
+    from mediapipe.tasks.python import vision
+
+    base_options = python.BaseOptions(model_asset_path=model_path)
+    options = vision.HolisticLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.IMAGE
+    )
+    detector = vision.HolisticLandmarker.create_from_options(options)
+    return detector, True
+
 
 def extract_holistic_landmarks(results) -> np.ndarray:
     """
@@ -73,25 +107,30 @@ def extract_holistic_landmarks(results) -> np.ndarray:
     Total = 63 + 63 + 12 = 138 features.
     """
     # Left Hand (21 * 3 = 63)
-    if results.left_hand_landmarks:
-        lh = np.array([[lm.x, lm.y, lm.z] for lm in results.left_hand_landmarks.landmark]).flatten()
+    if hasattr(results, "left_hand_landmarks") and results.left_hand_landmarks:
+        lms = results.left_hand_landmarks.landmark if hasattr(results.left_hand_landmarks, "landmark") else results.left_hand_landmarks
+        lh = np.array([[lm.x, lm.y, lm.z] for lm in lms]).flatten()
+        if len(lh) != 63:
+            lh = np.pad(lh, (0, max(0, 63 - len(lh))))[:63]
     else:
         lh = np.zeros(21 * 3, dtype=np.float32)
 
     # Right Hand (21 * 3 = 63)
-    if results.right_hand_landmarks:
-        rh = np.array([[lm.x, lm.y, lm.z] for lm in results.right_hand_landmarks.landmark]).flatten()
+    if hasattr(results, "right_hand_landmarks") and results.right_hand_landmarks:
+        lms = results.right_hand_landmarks.landmark if hasattr(results.right_hand_landmarks, "landmark") else results.right_hand_landmarks
+        rh = np.array([[lm.x, lm.y, lm.z] for lm in lms]).flatten()
+        if len(rh) != 63:
+            rh = np.pad(rh, (0, max(0, 63 - len(rh))))[:63]
     else:
         rh = np.zeros(21 * 3, dtype=np.float32)
 
     # Upper Body Pose (4 * 3 = 12)
-    if results.pose_landmarks:
-        pose_landmarks = results.pose_landmarks.landmark
-        # Indices 11, 12, 13, 14
+    if hasattr(results, "pose_landmarks") and results.pose_landmarks:
+        pose_lms = results.pose_landmarks.landmark if hasattr(results.pose_landmarks, "landmark") else results.pose_landmarks
         upper_pose = []
         for idx in [11, 12, 13, 14]:
-            if idx < len(pose_landmarks):
-                lm = pose_landmarks[idx]
+            if idx < len(pose_lms):
+                lm = pose_lms[idx]
                 upper_pose.extend([lm.x, lm.y, lm.z])
             else:
                 upper_pose.extend([0.0, 0.0, 0.0])
@@ -109,11 +148,10 @@ def sample_frame_indices(total_frames: int, target_frames: int = 60) -> np.ndarr
     if total_frames >= target_frames:
         return np.linspace(0, total_frames - 1, target_frames, dtype=int)
     else:
-        # If video is shorter than 60 frames, repeat frames evenly
         return np.round(np.linspace(0, total_frames - 1, target_frames)).astype(int)
 
 
-def process_video_to_raw_sequence(video_path: str, holistic) -> np.ndarray:
+def process_video_to_raw_sequence(video_path: str, detector, is_tasks: bool) -> np.ndarray:
     """Reads a video file and extracts raw landmark features for all frames."""
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -124,12 +162,20 @@ def process_video_to_raw_sequence(video_path: str, holistic) -> np.ndarray:
         ret, frame = cap.read()
         if not ret:
             break
-        # Convert BGR to RGB for MediaPipe
-        image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image_rgb.flags.writeable = False
-        results = holistic.process(image_rgb)
-        frame_features = extract_holistic_landmarks(results)
-        raw_frames.append(frame_features)
+        # Standardize frame resolution to 640x480 to prevent MediaPipe internal dimension mismatch
+        frame_resized = cv2.resize(frame, (640, 480), interpolation=cv2.INTER_AREA)
+        image_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
+        try:
+            if is_tasks:
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+                results = detector.detect(mp_image)
+            else:
+                image_rgb.flags.writeable = False
+                results = detector.process(image_rgb)
+            frame_features = extract_holistic_landmarks(results)
+            raw_frames.append(frame_features)
+        except Exception:
+            continue
 
     cap.release()
     if not raw_frames:
@@ -230,11 +276,7 @@ def run_pipeline():
 
     # 3. Initialize MediaPipe Holistic
     print("\n[*] Initializing MediaPipe Holistic...")
-    holistic = mp_holistic.Holistic(
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-        model_complexity=1
-    )
+    detector, is_tasks = init_holistic_detector()
 
     total_saved = 0
     class_counts = {}
@@ -248,7 +290,7 @@ def run_pipeline():
         class_counts[cls_name] = 0
 
         for v_idx, vpath in enumerate(video_paths):
-            base_seq = process_video_to_raw_sequence(vpath, holistic)
+            base_seq = process_video_to_raw_sequence(vpath, detector, is_tasks)
             if base_seq is None or base_seq.shape != (TARGET_FRAMES, TARGET_FEATURES):
                 continue
 
@@ -266,7 +308,8 @@ def run_pipeline():
                 class_counts[cls_name] += 1
                 total_saved += 1
 
-    holistic.close()
+    if hasattr(detector, "close"):
+        detector.close()
 
     # ── CELL 7: Summary Report ────────────────────────────────────────────────
     print("\n" + "=" * 65)
