@@ -151,6 +151,17 @@ def sample_frame_indices(total_frames: int, target_frames: int = 60) -> np.ndarr
         return np.round(np.linspace(0, total_frames - 1, target_frames)).astype(int)
 
 
+def create_task_detector(model_path="holistic_landmarker.task"):
+    from mediapipe.tasks import python
+    from mediapipe.tasks.python import vision
+    base_options = python.BaseOptions(model_asset_path=model_path)
+    options = vision.HolisticLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.IMAGE
+    )
+    return vision.HolisticLandmarker.create_from_options(options)
+
+
 def process_video_to_raw_sequence(video_path: str, detector, is_tasks: bool) -> np.ndarray:
     """Reads a video file and extracts raw landmark features for all frames."""
     cap = cv2.VideoCapture(video_path)
@@ -158,6 +169,8 @@ def process_video_to_raw_sequence(video_path: str, detector, is_tasks: bool) -> 
         return None
 
     raw_frames = []
+    global _CURRENT_DETECTOR
+    
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -174,7 +187,13 @@ def process_video_to_raw_sequence(video_path: str, detector, is_tasks: bool) -> 
                 results = detector.process(image_rgb)
             frame_features = extract_holistic_landmarks(results)
             raw_frames.append(frame_features)
-        except Exception:
+        except (RuntimeError, Exception):
+            # If MediaPipe C++ graph fails on a corrupted frame, skip frame or recreate task detector
+            if is_tasks:
+                try:
+                    detector = create_task_detector()
+                except Exception:
+                    pass
             continue
 
     cap.release()
