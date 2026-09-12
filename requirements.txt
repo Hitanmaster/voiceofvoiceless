@@ -1,0 +1,15 @@
+# Core Deep Learning & Computer Vision
+torch>=2.0.0
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Speech & UI
+pyttsx3>=2.90
+gradio>=4.0.0
+
+# Video Download & Utilities
+yt-dlp>=2024.0.0
+imageio-ffmpeg>=0.4.9
+tqdm>=4.66.0
+requests>=2.31.0
