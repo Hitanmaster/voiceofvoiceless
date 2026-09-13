@@ -122,8 +122,8 @@ class RealTimeSignDetector:
         features = self.extract_landmarks(results)
         self.sequence_buffer.append(features)
 
-        current_sign = "Waiting for motion..."
-        confidence = 0.0
+        top3_info = []
+        current_sign = "Buffering frames..."
 
         # Inference when sequence is full
         if len(self.sequence_buffer) == self.seq_len:
@@ -131,18 +131,21 @@ class RealTimeSignDetector:
             with torch.no_grad():
                 out = self.model(seq_tensor)
                 probs = torch.softmax(out, dim=1).cpu().numpy()[0]
-                pred_idx = np.argmax(probs)
+                top3_indices = np.argsort(probs)[::-1][:3]
+                top3_info = [(self.classes[idx], float(probs[idx])) for idx in top3_indices]
+
+                pred_idx = top3_indices[0]
                 confidence = float(probs[pred_idx])
                 predicted_label = self.classes[pred_idx]
 
-                if confidence > 0.75 and predicted_label.lower() != "idle":
+                if confidence > 0.65 and predicted_label.lower() != "idle":
                     self.prediction_history.append(predicted_label)
-                    
+
                     # Majority voting over recent predictions
                     counter = collections.Counter(self.prediction_history)
                     most_common, count = counter.most_common(1)[0]
 
-                    if count >= 4 and (time.time() - self.last_predict_time > 1.8):
+                    if count >= 3 and (time.time() - self.last_predict_time > 1.8):
                         if most_common != self.last_predicted_sign:
                             self.last_predicted_sign = most_common
                             self.last_predict_time = time.time()
@@ -152,30 +155,49 @@ class RealTimeSignDetector:
                             self.tts.speak(most_common)
                     current_sign = f"{predicted_label} ({confidence * 100:.1f}%)"
                 else:
-                    current_sign = f"idle ({confidence * 100:.1f}%)" if predicted_label.lower() == "idle" else "..."
+                    current_sign = f"idle ({confidence * 100:.1f}%)" if predicted_label.lower() == "idle" else f"Low Conf ({predicted_label}: {confidence*100:.1f}%)"
 
-        # UI Overlay
-        # Header banner
-        cv2.rectangle(frame, (0, 0), (w, 60), (24, 24, 24), -1)
-        cv2.putText(frame, f"Prediction: {current_sign}", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 128), 2, cv2.LINE_AA)
+        # ── UI Overlay & Debug HUD ──────────────────────────────────────────
+        # Top banner
+        cv2.rectangle(frame, (0, 0), (w, 50), (20, 20, 20), -1)
+        buffer_pct = int((len(self.sequence_buffer) / self.seq_len) * 100)
+        cv2.putText(frame, f"Sign: {current_sign}", (15, 35),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 255, 128), 2, cv2.LINE_AA)
+        cv2.putText(frame, f"Buffer: {len(self.sequence_buffer)}/{self.seq_len} ({buffer_pct}%)", (w - 240, 35),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1, cv2.LINE_AA)
+
+        # Top-3 predictions panel (Top Right)
+        if top3_info:
+            panel_y = 65
+            cv2.rectangle(frame, (w - 260, panel_y - 10), (w - 10, panel_y + 80), (15, 15, 15), -1)
+            cv2.putText(frame, "Top Predictions:", (w - 250, panel_y + 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
+            for i, (name, prob) in enumerate(top3_info):
+                bar_len = int(prob * 80)
+                color = (0, 255, 128) if i == 0 else (200, 200, 200)
+                cv2.putText(frame, f"{name[:12]:<12} {prob*100:4.1f}%", (w - 250, panel_y + 28 + i * 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
+                cv2.rectangle(frame, (w - 100, panel_y + 18 + i * 20), (w - 100 + bar_len, panel_y + 26 + i * 20), (0, 200, 255), -1)
 
         # Sentence footer banner
         cv2.rectangle(frame, (0, h - 50), (w, h), (18, 18, 18), -1)
-        sentence_str = " ".join(self.sentence) if self.sentence else "Signs will form a sentence here..."
-        cv2.putText(frame, f"Sentence: {sentence_str}", (20, h - 18),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
+        sentence_str = " ".join(self.sentence) if self.sentence else "Perform a sign for ~2 sec (Press 'c' to clear, 'f' to flip)"
+        cv2.putText(frame, f"Sentence: {sentence_str}", (15, h - 18),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
 
         return frame
 
     def run_live(self):
         cap = cv2.VideoCapture(0)
-        print("[*] Starting real-time sign detection. Press 'q' to quit, 'c' to clear sentence.")
+        mirror = True
+        print("[*] Starting real-time sign detection.")
+        print("[*] Controls: 'q' = Quit | 'c' = Clear sentence | 'f' = Toggle Mirroring")
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
-            frame = cv2.flip(frame, 1)
+            if mirror:
+                frame = cv2.flip(frame, 1)
             annotated = self.process_frame(frame)
             cv2.imshow("SignLanguageAI - Real-Time Sign to Speech", annotated)
 
@@ -184,7 +206,11 @@ class RealTimeSignDetector:
                 break
             elif key == ord('c'):
                 self.sentence.clear()
+                self.prediction_history.clear()
                 self.last_predicted_sign = None
+            elif key == ord('f'):
+                mirror = not mirror
+                print(f"[*] Camera mirroring set to: {mirror}")
 
         cap.release()
         cv2.destroyAllWindows()

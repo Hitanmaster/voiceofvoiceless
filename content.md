@@ -7,6 +7,44 @@
 
 # 🆕 Latest Entries & Updates
 
+## Entry: [2026-08-30] ML Engineer Comprehensive Knowledge Report
+
+**Full Report File:** `tickets/TICKET-01-ML-Engineer-Knowledge-Report.md`
+
+This report covers everything Person 1 (ML Engineer) needs to know and use.
+
+### Topics & Tools Map
+
+| Section | What Is Covered |
+| :--- | :--- |
+| **Tools & Libraries** | PyTorch, NumPy, SciPy, Scikit-learn, Matplotlib, Seaborn, Google Colab GPU |
+| **Neural Network Foundations** | Forward pass, backward pass, gradient descent, activation functions |
+| **LSTM / BiLSTM** | Hidden state, cell state, forget/input/output gates, vanishing gradient fix |
+| **Self-Attention** | Frame importance scoring, attention weights, context vector |
+| **BatchNorm1d** | Why shape matters (3D → 2D reshape trick), normalizing feature distributions |
+| **Dropout** | Preventing overfitting, `model.train()` vs `model.eval()` |
+| **Softmax + CrossEntropyLoss** | Why NOT to put Softmax in forward(), logits vs. probabilities |
+| **AdamW Optimizer** | Adaptive LR + weight decay for regularization |
+| **CosineAnnealingLR** | Learning rate scheduling across 100 epochs |
+| **Data Augmentation** | Gaussian noise, rotation, scale, temporal warp, hand dropout |
+| **Class Weights** | Fixing idle class imbalance in CrossEntropyLoss |
+| **Train/Val Split** | 80/20 split, why validation accuracy matters more than training accuracy |
+| **Confusion Matrix** | How to read it, seaborn heatmap, what off-diagonal means |
+| **Precision / Recall / F1** | Formulas, when each metric matters for sign language |
+| **Training Curves** | Diagnosing overfitting, underfitting, and unstable training |
+| **Checkpoint Saving** | Save best model only, `map_location='cpu'` for local loading |
+| **`class_labels.json`** | Why it's critical, how to generate and commit it |
+
+### Study Priority Order (Days 1–14)
+1. Python OOP + NumPy basics
+2. PyTorch tensors + nn.Module
+3. LSTM concept (colah.github.io blog recommended)
+4. BiLSTM + Dropout + BatchNorm1d
+5. PyTorch Dataset / DataLoader
+6. AdamW + LR Scheduler
+7. Confusion Matrix + F1-Score
+8. Attention mechanism + visualization
+
 ## Entry: [2026-08-28] 1-Month 4-Person Team Project Plan (Hybrid Strategy)
 
 **Full Plan File:** `ONE_MONTH_PROJECT_PLAN.md` in the project root.
