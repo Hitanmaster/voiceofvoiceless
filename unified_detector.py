@@ -7,7 +7,9 @@ import cv2
 import numpy as np
 import torch
 import mediapipe as mp
+
 from model import BiLSTMAttentionSignClassifier
+from feature_utils import resolve_active_model, get_feature_extractor
 
 # ── TTS ENGINE ─────────────────────────────────────────────────────────────────
 class AsyncTTS:
@@ -37,25 +39,38 @@ class AsyncTTS:
 
 # ── REAL-TIME SIGN DETECTOR ────────────────────────────────────────────────────
 class RealTimeSignDetector:
-    def __init__(self, model_path="unified_sign_model.pt", classes_path="classes.json", seq_len=60):
-        self.seq_len = seq_len
-        self.feature_dim = 138
+    def __init__(self, model_path=None, classes_path=None, seq_len=None):
+        # ── Auto-detect active model (v2 config first, legacy fallback) ──
+        self.model_path, self.active_config = resolve_active_model()
+        self.feature_version = self.active_config["version"]
+        self.feature_dim = self.active_config["input_dim"]
+        self.seq_len = seq_len or self.active_config.get("seq_len", 60)
+        self.classes = self.active_config["classes"]
+
+        if model_path:  # explicit override wins
+            self.model_path = model_path
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Load classes
-        with open(classes_path, "r") as f:
-            self.classes = json.load(f)
-
-        # Load Model
+        # Load model with dims inferred from the checkpoint itself
+        state = torch.load(self.model_path, map_location="cpu")
+        inferred_dim = None
+        try:
+            from feature_utils import infer_input_dim
+            inferred_dim = infer_input_dim(state)
+        except Exception:
+            pass
         self.model = BiLSTMAttentionSignClassifier(
-            input_dim=self.feature_dim,
+            input_dim=inferred_dim or self.feature_dim,
             hidden_dim=128,
             num_layers=2,
             num_classes=len(self.classes)
         ).to(self.device)
-
-        self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        self.model.load_state_dict(state)
         self.model.eval()
+
+        print(f"[detector] model={os.path.basename(self.model_path)} "
+              f"(v{self.feature_version}, input_dim={self.feature_dim}, "
+              f"classes={len(self.classes)}) on {self.device}")
 
         # MediaPipe Holistic
         self.mp_holistic = mp.solutions.holistic
@@ -66,6 +81,9 @@ class RealTimeSignDetector:
         )
         self.mp_draw = mp.solutions.drawing_utils
 
+        # Feature extractor matched to the active model
+        self.extract = get_feature_extractor(self.feature_version)
+
         # Sequence Buffer & State
         self.sequence_buffer = collections.deque(maxlen=self.seq_len)
         self.prediction_history = collections.deque(maxlen=7)
@@ -75,33 +93,12 @@ class RealTimeSignDetector:
         self.tts = AsyncTTS()
 
     def extract_landmarks(self, results):
-        # Left Hand (63)
-        if results.left_hand_landmarks:
-            lh = np.array([[lm.x, lm.y, lm.z] for lm in results.left_hand_landmarks.landmark]).flatten()
-        else:
-            lh = np.zeros(21 * 3, dtype=np.float32)
+        return self.extract(results)
 
-        # Right Hand (63)
-        if results.right_hand_landmarks:
-            rh = np.array([[lm.x, lm.y, lm.z] for lm in results.right_hand_landmarks.landmark]).flatten()
-        else:
-            rh = np.zeros(21 * 3, dtype=np.float32)
-
-        # Upper Pose (12)
-        if results.pose_landmarks:
-            pose_lms = results.pose_landmarks.landmark
-            upper_pose = []
-            for idx in [11, 12, 13, 14]:
-                if idx < len(pose_lms):
-                    lm = pose_lms[idx]
-                    upper_pose.extend([lm.x, lm.y, lm.z])
-                else:
-                    upper_pose.extend([0.0, 0.0, 0.0])
-            pose = np.array(upper_pose, dtype=np.float32)
-        else:
-            pose = np.zeros(4 * 3, dtype=np.float32)
-
-        return np.concatenate([lh, rh, pose])
+    def reset_after_commit(self):
+        """Clear stale frames so a just-committed sign isn't re-detected."""
+        self.sequence_buffer.clear()
+        self.prediction_history.clear()
 
     def process_frame(self, frame):
         h, w, _ = frame.shape
@@ -118,8 +115,8 @@ class RealTimeSignDetector:
         if results.pose_landmarks:
             self.mp_draw.draw_landmarks(frame, results.pose_landmarks, self.mp_holistic.POSE_CONNECTIONS)
 
-        # Extract features
-        features = self.extract_landmarks(results)
+        # Extract features (version matched to active model)
+        features = self.extract(results)
         self.sequence_buffer.append(features)
 
         top3_info = []
@@ -138,7 +135,8 @@ class RealTimeSignDetector:
                 confidence = float(probs[pred_idx])
                 predicted_label = self.classes[pred_idx]
 
-                if confidence > 0.65 and predicted_label.lower() != "idle":
+                # Threshold lowered 0.65 -> 0.50 (majority voting still guards noise)
+                if confidence > 0.50 and predicted_label.lower() != "idle":
                     self.prediction_history.append(predicted_label)
 
                     # Majority voting over recent predictions
@@ -153,6 +151,7 @@ class RealTimeSignDetector:
                             if len(self.sentence) > 6:
                                 self.sentence.pop(0)
                             self.tts.speak(most_common)
+                            self.reset_after_commit()
                     current_sign = f"{predicted_label} ({confidence * 100:.1f}%)"
                 else:
                     current_sign = f"idle ({confidence * 100:.1f}%)" if predicted_label.lower() == "idle" else f"Low Conf ({predicted_label}: {confidence*100:.1f}%)"

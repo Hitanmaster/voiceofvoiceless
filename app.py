@@ -49,7 +49,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", neutral_hue="slate")) as
         """
         # 🤟 SignLanguageAI — Voice of the Voiceless
         ### Real-Time Indian Sign Language (ISL) to Speech System
-        *BiLSTM + Self-Attention Neural Network (138 Holistic Features, 60-Frame Rolling Window)*
+        *BiLSTM + Self-Attention Neural Network (Normalized Holistic Features, 60-Frame Rolling Window)*
         """
     )
     
@@ -73,9 +73,9 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", neutral_hue="slate")) as
     with gr.Tab("🧠 Architecture & Specs"):
         gr.Markdown(
             """
-            - **Input Vector:** 138-dimensional normalized keypoint vector (21 Left Hand + 21 Right Hand + 4 Upper Body Pose).
+            - **Input Vector:** 150-dimensional normalized keypoint vector (v2: wrist-relative handshapes + 8 pose landmarks, scale/position invariant; legacy v1: 138 raw).
             - **Temporal Length:** 60 frames (~2.0 seconds at 30 FPS).
-            - **Architecture:** 2-Layer Bidirectional LSTM + Multi-Head Self-Attention + Dense Classifier.
+            - **Architecture:** 2-Layer Bidirectional LSTM + Self-Attention + Dense Classifier.
             - **Inference Latency:** < 15ms per frame on CPU / < 4ms on CUDA GPU.
             """
         )
