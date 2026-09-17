@@ -32,10 +32,10 @@ Complete walkthrough to retrain your sign language model with **normalized v2 fe
 1. Open https://colab.research.google.com → **New notebook**
 2. Open `colab_extract_v2.py` in this repo — each `CELL n:` block goes into one notebook cell
 3. Run in order:
-   - **CELL 1** — installs `mediapipe==0.10.21` (pinned so the legacy Holistic API works)
+   - **CELL 1** — installs compatible `numpy<2` and `mediapipe==0.10.14`. **Note:** If NumPy was downgraded, click **Runtime → Restart session** (or `Runtime -> Restart runtime`), then proceed to CELL 2.
    - **CELL 2** — authorize Google Drive access
    - **CELL 3** — config; check the printed paths/classes
-   - **CELL 4** — defines the v2 extractor
+   - **CELL 4** — defines the v2 extractor and initializes MediaPipe Holistic
    - **CELL 5** — the actual extraction loop; watch per-class counts
    - **CELL 6** — optional cleanup
 
@@ -123,7 +123,7 @@ The local code checks `model_config.json` first and falls back to the legacy `un
 
 | Problem | Fix |
 |---------|-----|
-| `AttributeError: mp.solutions.holistic` | Newer Colab images may ship an incompatible mediapipe. Re-run **CELL 1** — it auto-tries `0.10.21 → 0.10.14` and verifies the legacy API. If it prints `Smoke test FAILED`, run `!pip install -q "numpy<2"`, **Runtime → Restart session**, then re-run CELL 1 |
+| `AttributeError: module 'mediapipe' has no attribute 'solutions'` | Colab ships NumPy 2.x by default, which breaks MediaPipe's C-bindings. Run `!pip install "numpy<2" "protobuf<4.26.0" "mediapipe==0.10.14" opencv-python-headless tqdm`, then click **Runtime → Restart session**, and re-run from **CELL 2**. |
 | Most classes `SKIP (no landmarks)` | videos too small/dark/hands out of frame → check a few manually |
 | `CUDA out of memory` | lower `BATCH_SIZE` to 16 in CELL 2 |
 | Training stuck at low acc | check CELL 3 printed real split counts (not all-1-video classes) |

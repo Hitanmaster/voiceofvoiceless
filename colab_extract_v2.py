@@ -8,60 +8,61 @@
 
 
 # ═══════════════════ CELL 1: Install dependencies (auto-detects environment) ═════════
-# NOTE: newer Colab images (Python 3.12/3.13) may have NO wheel for a pinned
-# mediapipe, and the very latest mediapipe may drop the legacy mp.solutions API.
-# This cell tries known-good versions newest-first and verifies each one works.
-import sys, subprocess
+# NOTE: Colab defaults to NumPy 2.x, but legacy MediaPipe requires NumPy 1.x and protobuf<4.26.
+# This cell installs compatible versions and tests the Holistic API.
+import sys, subprocess, os
 
 def _pip(*pkgs):
-    return subprocess.run([sys.executable, "-m", "pip", "install", "-q", *pkgs],
+    return subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--upgrade", *pkgs],
                           capture_output=True, text=True)
 
 print(f"[*] Python {sys.version.split()[0]}")
 
+# Ensure NumPy 1.x is installed (MediaPipe C-bindings fail under NumPy 2.x)
+import numpy as _np
+_need_restart = False
+if int(_np.__version__.split(".")[0]) >= 2:
+    print("[*] Downgrading numpy from 2.x to <2.0.0 for MediaPipe compatibility...")
+    _pip("numpy<2.0.0")
+    _need_restart = True
+
 CANDIDATES = [
-    "mediapipe==0.10.21",   # last known-good legacy Holistic release
-    "mediapipe==0.10.20",
-    "mediapipe==0.10.18",
-    "mediapipe==0.10.14",
-    "mediapipe",            # newest available (verified below)
+    ["mediapipe==0.10.14", "numpy<2.0.0", "protobuf<4.26.0", "opencv-python-headless", "tqdm"],
+    ["mediapipe==0.10.21", "numpy<2.0.0", "protobuf<4.26.0", "opencv-python-headless", "tqdm"],
+    ["mediapipe==0.10.18", "numpy<2.0.0", "protobuf<4.26.0", "opencv-python-headless", "tqdm"],
+    ["mediapipe", "numpy<2.0.0", "opencv-python-headless", "tqdm"],
 ]
 
 _ok = False
-for _cand in CANDIDATES:
-    _r = _pip(_cand, "opencv-python-headless", "tqdm")
+for _pkgs in CANDIDATES:
+    _cand_name = _pkgs[0]
+    _r = _pip(*_pkgs)
     if _r.returncode != 0:
-        print(f"  [skip] {_cand}: no compatible wheel for this Python")
         continue
     try:
-        sys.modules.pop("mediapipe", None)   # drop any stale import
-        import mediapipe as _mp
-        assert hasattr(_mp, "solutions") and hasattr(_mp.solutions, "holistic"), \
-            "legacy mp.solutions.holistic API missing"
-        print(f"  [OK] mediapipe {_mp.__version__} (legacy Holistic API present)")
-        _ok = True
-        break
-    except AssertionError as _e:
-        print(f"  [skip] {_cand}: {_e}")
+        sys.modules.pop("mediapipe", None)
+        sys.modules.pop("mediapipe.python", None)
+        sys.modules.pop("mediapipe.python.solutions", None)
+        try:
+            import mediapipe.python.solutions.holistic as _h_mod
+            _ok = True
+            print(f"  [OK] {_cand_name} (Holistic solutions API verified)")
+            break
+        except Exception:
+            import mediapipe as _mp
+            if hasattr(_mp, "solutions") and hasattr(_mp.solutions, "holistic"):
+                _ok = True
+                print(f"  [OK] {_cand_name} (mp.solutions.holistic verified)")
+                break
     except Exception as _e:
-        print(f"  [skip] {_cand}: import failed -> {type(_e).__name__}: {_e}")
+        print(f"  [skip] {_cand_name}: {_e}")
 
-assert _ok, "[!] No compatible mediapipe installed. Copy this cell's FULL output and share it."
+if _need_restart:
+    print("\n[!] IMPORTANT: NumPy was downgraded. You MUST restart the runtime session.")
+    print("    Click: Runtime -> Restart session (or Runtime -> Restart runtime), then re-run from CELL 2.")
+else:
+    print("[OK] Dependencies verified. Continue to CELL 2.")
 
-# Smoke test: run Holistic once on a dummy frame to catch numpy/ABI issues now
-# rather than mid-extraction.
-import numpy as _np
-try:
-    _h = _mp.solutions.holistic.Holistic(static_image_mode=True)
-    _h.process(_np.zeros((64, 64, 3), dtype=_np.uint8))
-    _h.close()
-    print(f"[OK] Smoke test passed (numpy {_np.__version__}). Continue to CELL 2.")
-except Exception as _e:
-    print(f"[!] Smoke test FAILED: {type(_e).__name__}: {_e}")
-    print("    Likely a numpy 2.x ABI clash. Run:")
-    print('      !pip install -q "numpy<2"')
-    print("    then Runtime > Restart session, and re-run from CELL 1.")
-    raise
 
 
 # ═══════════════════════════ CELL 2: Mount Google Drive ═══════════════════════
@@ -206,12 +207,25 @@ def process_video(video_path: str, holistic) -> np.ndarray | None:
     return arr[idx]
 
 
-holistic = mp.solutions.holistic.Holistic(
+try:
+    import mediapipe.python.solutions.holistic as mp_holistic
+except (AttributeError, ImportError):
+    try:
+        import mediapipe as mp
+        mp_holistic = mp.solutions.holistic
+    except Exception as e:
+        raise ImportError(
+            "MediaPipe Holistic could not be loaded. Please ensure you ran CELL 1, "
+            "then restarted the runtime session via 'Runtime -> Restart session', "
+            "and re-ran from CELL 2."
+        ) from e
+
+holistic = mp_holistic.Holistic(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5,
     model_complexity=1
 )
-print("[OK] MediaPipe Holistic initialized (legacy API, mediapipe 0.10.21)")
+print("[OK] MediaPipe Holistic initialized successfully!")
 
 
 # ═══════════════════════ CELL 5: Run batch extraction ═════════════════════════
