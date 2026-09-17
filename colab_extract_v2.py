@@ -7,8 +7,61 @@
 # ==============================================================================
 
 
-# ═══════════════════════════ CELL 1: Install dependencies ═════════════════════
-# !pip install -q "mediapipe==0.10.21" opencv-python-headless numpy tqdm
+# ═══════════════════ CELL 1: Install dependencies (auto-detects environment) ═════════
+# NOTE: newer Colab images (Python 3.12/3.13) may have NO wheel for a pinned
+# mediapipe, and the very latest mediapipe may drop the legacy mp.solutions API.
+# This cell tries known-good versions newest-first and verifies each one works.
+import sys, subprocess
+
+def _pip(*pkgs):
+    return subprocess.run([sys.executable, "-m", "pip", "install", "-q", *pkgs],
+                          capture_output=True, text=True)
+
+print(f"[*] Python {sys.version.split()[0]}")
+
+CANDIDATES = [
+    "mediapipe==0.10.21",   # last known-good legacy Holistic release
+    "mediapipe==0.10.20",
+    "mediapipe==0.10.18",
+    "mediapipe==0.10.14",
+    "mediapipe",            # newest available (verified below)
+]
+
+_ok = False
+for _cand in CANDIDATES:
+    _r = _pip(_cand, "opencv-python-headless", "tqdm")
+    if _r.returncode != 0:
+        print(f"  [skip] {_cand}: no compatible wheel for this Python")
+        continue
+    try:
+        sys.modules.pop("mediapipe", None)   # drop any stale import
+        import mediapipe as _mp
+        assert hasattr(_mp, "solutions") and hasattr(_mp.solutions, "holistic"), \
+            "legacy mp.solutions.holistic API missing"
+        print(f"  [OK] mediapipe {_mp.__version__} (legacy Holistic API present)")
+        _ok = True
+        break
+    except AssertionError as _e:
+        print(f"  [skip] {_cand}: {_e}")
+    except Exception as _e:
+        print(f"  [skip] {_cand}: import failed -> {type(_e).__name__}: {_e}")
+
+assert _ok, "[!] No compatible mediapipe installed. Copy this cell's FULL output and share it."
+
+# Smoke test: run Holistic once on a dummy frame to catch numpy/ABI issues now
+# rather than mid-extraction.
+import numpy as _np
+try:
+    _h = _mp.solutions.holistic.Holistic(static_image_mode=True)
+    _h.process(_np.zeros((64, 64, 3), dtype=_np.uint8))
+    _h.close()
+    print(f"[OK] Smoke test passed (numpy {_np.__version__}). Continue to CELL 2.")
+except Exception as _e:
+    print(f"[!] Smoke test FAILED: {type(_e).__name__}: {_e}")
+    print("    Likely a numpy 2.x ABI clash. Run:")
+    print('      !pip install -q "numpy<2"')
+    print("    then Runtime > Restart session, and re-run from CELL 1.")
+    raise
 
 
 # ═══════════════════════════ CELL 2: Mount Google Drive ═══════════════════════

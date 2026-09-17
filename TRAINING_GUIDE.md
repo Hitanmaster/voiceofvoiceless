@@ -123,7 +123,7 @@ The local code checks `model_config.json` first and falls back to the legacy `un
 
 | Problem | Fix |
 |---------|-----|
-| `AttributeError: mp.solutions.holistic` | mediapipe not pinned → re-run CELL 1 with `mediapipe==0.10.21` |
+| `AttributeError: mp.solutions.holistic` | Newer Colab images may ship an incompatible mediapipe. Re-run **CELL 1** — it auto-tries `0.10.21 → 0.10.14` and verifies the legacy API. If it prints `Smoke test FAILED`, run `!pip install -q "numpy<2"`, **Runtime → Restart session**, then re-run CELL 1 |
 | Most classes `SKIP (no landmarks)` | videos too small/dark/hands out of frame → check a few manually |
 | `CUDA out of memory` | lower `BATCH_SIZE` to 16 in CELL 2 |
 | Training stuck at low acc | check CELL 3 printed real split counts (not all-1-video classes) |
