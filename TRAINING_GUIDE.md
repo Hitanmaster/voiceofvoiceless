@@ -30,14 +30,10 @@ Complete walkthrough to retrain your sign language model with **normalized v2 fe
 > Extraction is CPU-bound; you don't need GPU for this part.
 
 1. Open https://colab.research.google.com → **New notebook**
-2. Open `colab_extract_v2.py` in this repo — each `CELL n:` block goes into one notebook cell
-3. Run in order:
-   - **CELL 1** — installs compatible `numpy<2` and `mediapipe==0.10.14`. **Note:** If NumPy was downgraded, click **Runtime → Restart session** (or `Runtime -> Restart runtime`), then proceed to CELL 2.
-   - **CELL 2** — authorize Google Drive access
-   - **CELL 3** — config; check the printed paths/classes
-   - **CELL 4** — defines the v2 extractor and initializes MediaPipe Holistic
-   - **CELL 5** — the actual extraction loop; watch per-class counts
-   - **CELL 6** — optional cleanup
+2. **Recommended (Fastest)**: Open [`colab_extract_v2_singlecell.py`](file:///d:/workfiles/PBL%20Project/voiceofvoiceless/colab_extract_v2_singlecell.py), copy everything into **one single Colab cell**, and hit Run.
+   - It **automatically detects Python 3.13** and provisions an isolated Python 3.11 runner in ~10 seconds.
+   - It handles Drive mounting and all dependencies seamlessly.
+3. Alternatively, use [`colab_extract_v2.py`](file:///d:/workfiles/PBL%20Project/voiceofvoiceless/colab_extract_v2.py) cell-by-cell.
 
 **Expected output:** per-class table like
 ```
