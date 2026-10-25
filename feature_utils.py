@@ -15,6 +15,12 @@ v2 (150 dims, scale- & position-invariant — used by new training):
     -> Invariant to where the person stands in frame and how far they are from
        the camera, so the model generalizes across people and setups.
 
+v3 (506 dims, 20 frames — Vāksetu ISL Feature Dataset format, 300 signs):
+    253 base features (both hands wrist-centred + face-relative + proximity)
+    + 253 frame-to-frame velocities. See vaksetu/vaksetu_features.py.
+    Per-frame extraction returns the 253 base vector; the detector samples
+    20 frames from its buffer and appends velocity at inference time.
+
 legacy (138 dims, v1 raw normalized coordinates — kept for the original model):
     [   0: 63]  Left hand raw x,y,z   (zeros if hand missing)
     [  63:126]  Right hand raw x,y,z  (zeros if hand missing)
@@ -28,6 +34,7 @@ from pathlib import Path
 import numpy as np
 
 # ── Constants ─────────────────────────────────────────────────────────────────
+FEATURE_DIM_V3 = 506
 FEATURE_DIM_V2 = 150
 FEATURE_DIM_LEGACY = 138
 SEQ_LEN_DEFAULT = 60
@@ -116,7 +123,10 @@ def extract_features_legacy(results) -> np.ndarray:
 
 
 def get_feature_extractor(version: int):
-    """Return the extraction function matching a model config version."""
+    """Return the per-frame extraction function matching a model config version."""
+    if int(version) >= 3:
+        from vaksetu.vaksetu_features import extract_frame_from_holistic
+        return extract_frame_from_holistic          # (253,) base frame
     return extract_features_v2 if int(version) >= 2 else extract_features_legacy
 
 
@@ -162,6 +172,8 @@ def resolve_active_model(project_root=None):
                     "classes": list(classes),
                     "feature": cfg.get("feature", "v2_normalized"),
                     "model_file": model_file,
+                    "hidden_dim": int(cfg.get("hidden_dim", 128)),
+                    "window_frames": int(cfg.get("window_frames", 0)),
                 }
         except (json.JSONDecodeError, OSError):
             pass  # fall through to legacy
@@ -177,4 +189,6 @@ def resolve_active_model(project_root=None):
         "classes": list(classes),
         "feature": "legacy_raw",
         "model_file": LEGACY_MODEL_NAME,
+        "hidden_dim": 128,
+        "window_frames": 0,
     }
