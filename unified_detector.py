@@ -61,7 +61,7 @@ class RealTimeSignDetector:
             pass
         self.model = BiLSTMAttentionSignClassifier(
             input_dim=inferred_dim or self.feature_dim,
-            hidden_dim=128,
+            hidden_dim=self.active_config.get("hidden_dim", 128),
             num_layers=2,
             num_classes=len(self.classes)
         ).to(self.device)
@@ -85,7 +85,11 @@ class RealTimeSignDetector:
         self.extract = get_feature_extractor(self.feature_version)
 
         # Sequence Buffer & State
-        self.sequence_buffer = collections.deque(maxlen=self.seq_len)
+        # v3 (Vāksetu) keeps a longer buffer of 253-dim frames and samples it
+        # down to seq_len (20) + velocity at inference; v1/v2 feed the buffer as-is.
+        self.is_v3 = int(self.feature_version) >= 3
+        self.buffer_len = (self.active_config.get("window_frames") or 45) if self.is_v3 else self.seq_len
+        self.sequence_buffer = collections.deque(maxlen=self.buffer_len)
         self.prediction_history = collections.deque(maxlen=7)
         self.sentence = []
         self.last_predicted_sign = None
@@ -123,8 +127,13 @@ class RealTimeSignDetector:
         current_sign = "Buffering frames..."
 
         # Inference when sequence is full
-        if len(self.sequence_buffer) == self.seq_len:
-            seq_tensor = torch.tensor(np.array(self.sequence_buffer), dtype=torch.float32).unsqueeze(0).to(self.device)
+        if len(self.sequence_buffer) == self.buffer_len:
+            if self.is_v3:
+                from vaksetu.vaksetu_features import build_model_input
+                seq = build_model_input(list(self.sequence_buffer), self.seq_len)
+            else:
+                seq = np.array(self.sequence_buffer)
+            seq_tensor = torch.tensor(seq, dtype=torch.float32).unsqueeze(0).to(self.device)
             with torch.no_grad():
                 out = self.model(seq_tensor)
                 probs = torch.softmax(out, dim=1).cpu().numpy()[0]
@@ -159,10 +168,10 @@ class RealTimeSignDetector:
         # ── UI Overlay & Debug HUD ──────────────────────────────────────────
         # Top banner
         cv2.rectangle(frame, (0, 0), (w, 50), (20, 20, 20), -1)
-        buffer_pct = int((len(self.sequence_buffer) / self.seq_len) * 100)
+        buffer_pct = int((len(self.sequence_buffer) / self.buffer_len) * 100)
         cv2.putText(frame, f"Sign: {current_sign}", (15, 35),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 255, 128), 2, cv2.LINE_AA)
-        cv2.putText(frame, f"Buffer: {len(self.sequence_buffer)}/{self.seq_len} ({buffer_pct}%)", (w - 240, 35),
+        cv2.putText(frame, f"Buffer: {len(self.sequence_buffer)}/{self.buffer_len} ({buffer_pct}%)", (w - 240, 35),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1, cv2.LINE_AA)
 
         # Top-3 predictions panel (Top Right)
