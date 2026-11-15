@@ -89,32 +89,43 @@ M_DOMAIN = _col(manifest, "domain")
 print("[*] manifest columns:", list(manifest.columns))
 
 flags = pd.read_csv(f"{DATA_DIR}/quality_flags.csv")
-F_SHA = _col(flags, "sha")
+F_SHA = _col(flags, "hash") or _col(flags, "sha")
 BAD_SHA = set(flags[F_SHA].astype(str).str.lower()) if F_SHA else set()
 print(f"[*] quality-flagged arrays to drop: {len(BAD_SHA)}")
 
 def _s(x):
     return x.decode() if isinstance(x, (bytes, np.bytes_)) else str(x)
 
+def _json_map(ds):
+    """Scalar HDF5 string holding a JSON {name: index} map -> list indexed by int."""
+    m = json.loads(_s(ds[()]))
+    out = [None] * (max(m.values()) + 1)
+    for name, i in m.items():
+        out[int(i)] = str(name)
+    return out
+
 def group_labels(f, group):
-    """Per-row class names + domains for one HDF5 group."""
+    """Per-row class names + domains for one HDF5 group.
+
+    main_positive: int "labels" index a scalar JSON map in "class_names",
+                   int "domains" index a scalar JSON map in "domain_names".
+    other groups:  the class is the folder in the filename ('<class>/<file>.npy');
+                   the domain comes from the manifest.
+    """
     g = f[group]
     n = g["data"].shape[0]
     names = [_s(x) for x in g["filenames"][:]]
-    if group == "main_positive" and "labels" in g and "class_names" in f:
-        cls_names = [_s(x) for x in f["class_names"][:]]
-        classes = [cls_names[i] for i in g["labels"][:]]
-    elif group == "main_positive" and "labels" in g and "class_names" in g:
-        cls_names = [_s(x) for x in g["class_names"][:]]
-        classes = [cls_names[i] for i in g["labels"][:]]
+    if "labels" in g and "class_names" in g:
+        cls_names = _json_map(g["class_names"])
+        classes = [cls_names[int(i)] for i in g["labels"][:]]
     else:
-        sub = manifest[manifest[M_GROUP] == group].set_index(M_FILE)
-        classes = [str(sub.at[fn, M_CLASS]) if fn in sub.index else None for fn in names]
-    if "domains" in g:
-        domains = [_s(x) for x in g["domains"][:]]
+        classes = [fn.split("/", 1)[0] if "/" in fn else None for fn in names]
+    if "domains" in g and "domain_names" in g:
+        dom_names = _json_map(g["domain_names"])
+        domains = [dom_names[int(i)] for i in g["domains"][:]]
     elif M_DOMAIN:
-        sub = manifest[manifest[M_GROUP] == group].set_index(M_FILE)
-        domains = [str(sub.at[fn, M_DOMAIN]) if fn in sub.index else "unknown" for fn in names]
+        sub = manifest[manifest[M_GROUP] == group].set_index(M_FILE)[M_DOMAIN]
+        domains = [str(sub.get(fn, "unknown")) for fn in names]
     else:
         domains = ["unknown"] * n
     return classes, domains
