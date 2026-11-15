@@ -23,13 +23,6 @@
 # ==============================================================================
 
 
-# ═══════════════════════════ CELL 1: Setup ════════════════════════════════════
-# Runtime -> Change runtime type -> T4 GPU
-# !pip -q install h5py
-from google.colab import drive
-drive.mount("/content/drive")
-
-
 # ═══════════════════════════ CELL 2: Configuration ════════════════════════════
 import os, sys, json, hashlib, random, subprocess
 import numpy as np
