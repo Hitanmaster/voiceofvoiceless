@@ -29,6 +29,8 @@ def predict_video(video_path):
         if not ret:
             break
         
+        if getattr(detector, "is_v3", False):
+            frame = cv2.flip(frame, 1)   # v3 (Vāksetu) features expect a mirrored view, like the webcam
         annotated = detector.process_frame(frame)
         
         if out_writer is None:
@@ -73,8 +75,8 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", neutral_hue="slate")) as
     with gr.Tab("🧠 Architecture & Specs"):
         gr.Markdown(
             """
-            - **Input Vector:** 150-dimensional normalized keypoint vector (v2: wrist-relative handshapes + 8 pose landmarks, scale/position invariant; legacy v1: 138 raw).
-            - **Temporal Length:** 60 frames (~2.0 seconds at 30 FPS).
+            - **Input Vector:** v3: 506 features per frame (Vāksetu format: wrist-centred + face-relative hands, proximity, velocities), 20 frames; v2: 150-dim normalized keypoints over 60 frames; legacy v1: 138 raw.
+            - **Temporal Length:** v3 samples 20 frames from a ~1.5 s window; v2 uses 60 frames (~2.0 s at 30 FPS).
             - **Architecture:** 2-Layer Bidirectional LSTM + Self-Attention + Dense Classifier.
             - **Inference Latency:** < 15ms per frame on CPU / < 4ms on CUDA GPU.
             """
